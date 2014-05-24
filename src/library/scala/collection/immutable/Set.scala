@@ -35,7 +35,7 @@ trait Set[A] extends Iterable[A]
   override def companion: GenericCompanion[Set] = Set
   
   
-  override def toSet[B >: A]: Set[B] = super.toSet[B] // for bincompat; remove in dev
+  override def toSet[B >: A]: Set[B] = to[({type l[a] = immutable.Set[B]})#l] // for bincompat; remove in dev
   
   override def seq: Set[A] = this
   protected override def parCombiner = ParSet.newCombiner[A] // if `immutable.SetLike` gets introduced, please move this there!
