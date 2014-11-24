@@ -381,11 +381,28 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
    */
   @implicitNotFound(msg = "Cannot prove that ${From} <:< ${To}.")
   sealed abstract class <:<[-From, +To] extends (From => To) with Serializable {
-    def compose[A](ev: A <:< From): A <:< To = singleton_<:<.asInstanceOf[A <:< To]
-    def andThen[A](ev: To <:< A): From <:< A = singleton_<:<.asInstanceOf[From <:< A]
-    def subst[P[-_]](from: P[To]): P[From] = from.asInstanceOf[P[From]]
+    final def compose[A](ev: A <:< From): A <:< To = {
+      type Left[-X] = X <:< To
+      ev.replace[Left](this)
+    }
+    final def andThen[A](ev: To <:< A): From <:< A = ev compose this
+    final def apply(x: From): To = {
+      type Left[-X] = X => To
+      replace[Left](identity[To] _)(x)
+    }
+    final def liftCovariant[P[+_]]: P[From] <:< P[To] = {
+      type Lifted[-X] = P[X] <:< P[To]
+      replace[Lifted](implicitly[P[To] <:< P[To]])
+    }
+    final def liftContravariant[P[-_]]: P[To] <:< P[From] = {
+      type Lifted[-X] = P[To] <:< P[X]
+      replace[Lifted](implicitly[P[To] <:< P[To]])
+    }
+    final def replaceCovariant[P[+_]](from: P[From]): P[To] =
+      liftCovariant[P](from)
+    def replace[P[-_]](from: P[To]): P[From]
   }
-  private[this] final val singleton_<:< = new <:<[Any,Any] { def apply(x: Any): Any = x }
+  private[this] final val singleton_<:< = new <:<[Any,Any] { def replace[P[-_]](x: P[Any]): P[Any] = x }
   // The dollar prefix is to dodge accidental shadowing of this method
   // by a user-defined method of the same name (SI-7788).
   // The collections rely on this method.
@@ -400,12 +417,26 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
    */
   @implicitNotFound(msg = "Cannot prove that ${From} =:= ${To}.")
   sealed abstract class =:=[From, To] extends (From => To) with Serializable {
-    val symm: To =:= From = singleton_=:=.asInstanceOf[To =:= From]
-    def compose[A](ev: A =:= From): A =:= To = singleton_=:=.asInstanceOf[A =:= To]
-    def andThen[A](ev: To =:= A): From =:= A = singleton_=:=.asInstanceOf[From =:= A]
-    def subst[P[_]](from: P[From]): P[To] = from.asInstanceOf[P[To]]
+    final def swapped: To =:= From = {
+      type Dual[X] = X =:= From
+      replace[Dual](implicitly[From =:= From])
+    }
+    final def apply(x: From): To = {
+      type Id[X] = X
+      replace[Id](x)
+    }
+    final def compose[A](ev: A =:= From): A =:= To = {
+      type Right[X] = A =:= X
+      replace[Right](ev)
+    }
+    final def andThen[A](ev: To =:= A): From =:= A = ev compose this
+    final def lift[P[_]]: P[From] =:= P[To] = {
+      type Lifted[X] = P[From] =:= P[X]
+      replace[Lifted](implicitly[P[From] =:= P[From]])
+    }
+    def replace[P[_]](from: P[From]): P[To]
   }
-  private[this] final val singleton_=:= = new =:=[Any,Any] { def apply(x: Any): Any = x }
+  private[this] final val singleton_=:= = new =:=[Any,Any] { def replace[P[_]](x: P[Any]): P[Any] = x }
   object =:= {
      implicit def tpEquals[A]: A =:= A = singleton_=:=.asInstanceOf[A =:= A]
   }
