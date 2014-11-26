@@ -392,7 +392,10 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
      */
     final def andThen[A](ev: To <:< A): From <:< A = ev compose this
     /** Return `x` with a different type.  Degenerate case of
-     *  `replaceCovariant`: every `From` is a `To`.
+     *  `replaceCovariant`: every `From` is a `To`.  It is more
+     *  efficient to `replace` or `replaceCovariant` a function or
+     *  other data structure than to repeatedly `apply` to individual
+     *  values.
      */
     final def apply(x: From): To = {
       type Left[-X] = X => To
@@ -476,7 +479,9 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
       replace[Dual](implicitly[From =:= From])
     }
     /** Return `x` with a different type.  Degenerate case of `replace`:
-     *  every `From` is a `To`.
+     *  every `From` is a `To`.  It is more efficient to `replace` a
+     *  function or other data structure than to repeatedly `apply` to
+     *  individual values.
      */
     final def apply(x: From): To = {
       type Id[X] = X
