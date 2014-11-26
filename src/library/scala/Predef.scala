@@ -461,6 +461,11 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
   // The collections rely on this method.
   implicit def $conforms[A]: A <:< A = singleton_<:<.asInstanceOf[A <:< A]
 
+  object <:< {
+    implicit def composed[T, U, V](implicit tu: T <:< U, uv: U <:< V)
+        : T <:< V = uv compose tu
+  }
+
   @deprecated("Use `implicitly[T <:< U]` or `identity` instead.", "2.11.0")
   def conforms[A]: A <:< A = $conforms[A]
 
@@ -556,8 +561,15 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
     def replace[P[_]](from: P[From]): P[To]
   }
   private[this] final val singleton_=:= = new =:=[Any,Any] { def replace[P[_]](x: P[Any]): P[Any] = x }
-  object =:= {
+  object =:= extends LowPriority_=:= {
      implicit def tpEquals[A]: A =:= A = singleton_=:=.asInstanceOf[A =:= A]
+  }
+
+  sealed abstract class LowPriority_=:= {
+    implicit final def inverted[T, V](implicit ev: T =:= V)
+        : V =:= T = ev.inverse
+    implicit final def composed[T, U, V](implicit tu: T =:= U, uv: U =:= V)
+        : T =:= V = uv compose tu
   }
 
   /** A type for which there is always an implicit value.
