@@ -381,25 +381,75 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
    */
   @implicitNotFound(msg = "Cannot prove that ${From} <:< ${To}.")
   sealed abstract class <:<[-From, +To] extends (From => To) with Serializable {
+    /** If `From` is a subtype of `To` and `A` is a subtype of `From`,
+      * then `A` is a subtype of `To`.
+     */
     final def compose[A](ev: A <:< From): A <:< To = {
       type Left[-X] = X <:< To
       ev.replace[Left](this)
     }
+    /** Flipped version of `compose`.
+     */
     final def andThen[A](ev: To <:< A): From <:< A = ev compose this
+    /** Return `x` with a different type.  Degenerate case of
+     *  `replaceCovariant`: every `From` is a `To`.
+     */
     final def apply(x: From): To = {
       type Left[-X] = X => To
       replace[Left](identity[To] _)(x)
     }
+    /** Represent `replaceCovariant` as a derived `<:<`.
+     *
+     *  @tparam P The covariant context in which we lift.
+     */
     final def liftCovariant[P[+_]]: P[From] <:< P[To] = {
       type Lifted[-X] = P[X] <:< P[To]
       replace[Lifted](implicitly[P[To] <:< P[To]])
     }
+    /** Represent `replace` as a derived `<:<`.  Note that the `To` and
+     *  `From` switch positions.
+     *
+     *  @tparam P The contravariant context in which we lift.
+     */
     final def liftContravariant[P[-_]]: P[To] <:< P[From] = {
       type Lifted[-X] = P[To] <:< P[X]
       replace[Lifted](implicitly[P[To] <:< P[To]])
     }
+    /** If `From` is a subtype of `To`, you can substitute `To` for `From`
+     *  in all *covariant* contexts.
+     *
+     *  See `replace` for usage; this one is similar.
+     *
+     *  @tparam P The context surrounding `From`.
+     */
     final def replaceCovariant[P[+_]](from: P[From]): P[To] =
       liftCovariant[P](from)
+    /** If `From` is a subtype of `To`, you can substitute `From` for `To`
+     *  in all *contravariant* contexts.
+     *
+     *  For usage, see the `=:=#replace` examples.  The general usage
+     *  of this `replace` is mostly like that, except that `To` can
+     *  only occur in contravariant contexts.  (`#replaceCovariant` is
+     *  defined for replacing `From` with `To` in covariant
+     *  contexts.)
+     *
+     *  Here are a few example types like those of `=:=#replace`,
+     *  adapted for this `replace`.
+     *
+     *  {{{
+     *  type C1[-T] = List[T] => Int
+     *  type C4[-T] = T => Int   // like P4
+     *  type C6[-T] = List[T] => collect.mutable.Buffer[List[X]]
+     *  }}}
+     *
+     *  Why is the contravariant `replace` considered the primitive
+     *  one?  Because the covariant version can be derived from the
+     *  contravariant one via "double negation", in the same way that
+     *  `X` is in covariant position in `(X => Y) => Y`.  You can't
+     *  reach contravariance via "double positivity", though.
+     *
+     *  @tparam P The context surrounding `To`.
+     */
     def replace[P[-_]](from: P[To]): P[From]
   }
   private[this] final val singleton_<:< = new <:<[Any,Any] { def replace[P[-_]](x: P[Any]): P[Any] = x }
@@ -417,23 +467,87 @@ object Predef extends LowPriorityImplicits with DeprecatedPredef {
    */
   @implicitNotFound(msg = "Cannot prove that ${From} =:= ${To}.")
   sealed abstract class =:=[From, To] extends (From => To) with Serializable {
-    final def swapped: To =:= From = {
+    /** If `From` is `To`, then `To` is `From`.  May seem obvious, but
+     *  changing the order can make operations like `apply` more
+     *  convenient.
+     */
+    final def inverse: To =:= From = {
       type Dual[X] = X =:= From
       replace[Dual](implicitly[From =:= From])
     }
+    /** Return `x` with a different type.  Degenerate case of `replace`:
+     *  every `From` is a `To`.
+     */
     final def apply(x: From): To = {
       type Id[X] = X
       replace[Id](x)
     }
+    /** If `From` is `To` and `A` is `From`, then `A` is `To`.
+     */
     final def compose[A](ev: A =:= From): A =:= To = {
       type Right[X] = A =:= X
       replace[Right](ev)
     }
+    /** Flipped version of `compose`.
+     */
     final def andThen[A](ev: To =:= A): From =:= A = ev compose this
+    /** Represent `replace` as a derived `=:=`.
+     */
     final def lift[P[_]]: P[From] =:= P[To] = {
       type Lifted[X] = P[From] =:= P[X]
       replace[Lifted](implicitly[P[From] =:= P[From]])
     }
+    /** If `From` and `To` are equal, you can substitute `To` for `From`
+     *  in all contexts.
+     *
+     *  For example, suppose you have a value `orig`, of one of the
+     *  following types:
+     *
+     *  {{{
+     *  List[X]
+     *  collection.mutable.Buffer[X]
+     *  Int => X
+     *  X => Int
+     *  X => X
+     *  List[X] => collect.mutable.Buffer[List[X]]
+     *  }}}
+     *
+     *  If you have a value `ev` of type `X =:= Y`, you can define a
+     *  type that represents the positions of `X` in those types you
+     *  want to change to `Y`:
+     *
+     *  {{{
+     *  type P1[T] = List[T]
+     *  type P2[T] = collection.mutable.Buffer[T]
+     *  type P3[T] = Int => T
+     *  type P4[T] = T => Int
+     *  type P5[T] = T => T
+     *  type P6[T] = List[X] => collect.mutable.Buffer[List[T]]
+     *  }}}
+     *
+     *  Note that the last example still contains an `X`.  Now if you
+     *  call `ev.replace[Pn](orig)` for the appropriate `n`, you get a
+     *  value which is guaranteed to be identical to `orig` but having
+     *  the respective type:
+     *
+     *  {{{
+     *  List[Y]
+     *  collection.mutable.Buffer[Y]
+     *  Int => Y
+     *  Y => Int
+     *  Y => Y
+     *  List[X] => collect.mutable.Buffer[List[Y]]
+     *  }}}
+     *
+     *  On convenience: `P1` and `P2` can be passed as the type
+     *  parameter `List` and `collection.mutable.Buffer` directly,
+     *  because they have the appropriate kind.  More complex types
+     *  can also be passed directly, at the cost of more complex
+     *  syntax; for example, instead of `P4`, you would write `({type
+     *  l[a] = a => Int})#l`.
+     *
+     *  @tparam P The context surrounding `From`.
+     */
     def replace[P[_]](from: P[From]): P[To]
   }
   private[this] final val singleton_=:= = new =:=[Any,Any] { def replace[P[_]](x: P[Any]): P[Any] = x }
